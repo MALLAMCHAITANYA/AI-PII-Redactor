@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download the spaCy model
-RUN python -m spacy download en_core_web_lg
+# Download the smaller spaCy model for memory efficiency
+RUN python -m spacy download en_core_web_sm
 
 # Copy the rest of the application code
 COPY . .

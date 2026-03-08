@@ -11,7 +11,7 @@ class TextRedactorService:
         try:
             # The Analyzer Engine identifies PII
             # Try to load models in order of preference
-            models = ["en_core_web_lg", "en_core_web_md", "en_core_web_sm"]
+            models = ["en_core_web_sm", "en_core_web_md", "en_core_web_lg"]
             success = False
             self.analyzer = None
             
