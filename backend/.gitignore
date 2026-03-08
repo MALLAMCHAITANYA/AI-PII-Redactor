@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Tests
+test_results/
+redacted_sample.mp3
+sample_audio.wav
+
+# OS
+.DS_Store
+Thumbs.db

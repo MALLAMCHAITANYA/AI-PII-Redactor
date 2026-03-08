@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  }
+
+  body {
+    @apply m-0 min-h-screen bg-slate-950 text-slate-100 antialiased;
+  }
+}
+
+@layer components {
+  .highlighted-preview mark {
+    @apply rounded bg-red-500/30 px-1 text-red-200;
+  }
+}
