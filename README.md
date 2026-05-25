@@ -10,7 +10,7 @@ An intelligent, secure, and modern privacy tool designed to automatically redact
 ---
 
 ## 🌐 Live Deployments
-- 🎨 **Frontend Web App**: [https://ai-pii-redactor-1.vercel.app](https://ai-pii-redactor-1.vercel.app)
+- 🎨 **Frontend Web App**: [https://ai-pii-redactor.vercel.app/](https://ai-pii-redactor.vercel.app/)
 - ⚙️ **Backend API Server**: [https://ai-pii-redactor-1.onrender.com](https://ai-pii-redactor-1.onrender.com)
 
 ---
