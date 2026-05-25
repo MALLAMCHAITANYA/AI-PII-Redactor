@@ -23,6 +23,7 @@ app.add_middleware(
 )
 
 @app.get("/")
+@app.head("/")
 def read_root():
     return {"status": "ok", "message": "AI PII Redactor Backend is running!"}
 
