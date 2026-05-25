@@ -19,7 +19,7 @@ class TextRedactorService:
             # If it fails, it usually means the default model (lg) is missing.
             # We then try to explicitly load what's available.
             try:
-                self.analyzer = AnalyzerEngine()
+                self.analyzer = AnalyzerEngine(default_score_threshold=0.5)
                 success = True
             except Exception as e:
                 logger.warning(f"Default Presidio initialization failed: {e}. Trying fallbacks...")
@@ -31,7 +31,7 @@ class TextRedactorService:
                             # but for now, we'll suggest downloading the model if it fails.
                             logger.info(f"Found model {model}, attempting to use it.")
                             # AnalyzerEngine(default_score_threshold=0.35) should work if sm is the only one.
-                            self.analyzer = AnalyzerEngine(default_score_threshold=0.35)
+                            self.analyzer = AnalyzerEngine(default_score_threshold=0.5)
                             success = True
                             break
                     except Exception as model_e:
@@ -49,7 +49,7 @@ class TextRedactorService:
             
             # 2. Indian Aadhaar Card (10-12 digits with various separators)
             # Standard is 12 digits, but users sometimes use test data or 10 digits
-            aadhaar_pattern = Pattern(name="aadhaar_pattern", regex=r"\d{4}[\s-]?\d{4}[\s-]?\d{4}|\d{3}[\s-]?\d{3}[\s-]?\d{4}", score=0.85)
+            aadhaar_pattern = Pattern(name="aadhaar_pattern", regex=r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b", score=0.85)
             aadhaar_recognizer = PatternRecognizer(
                 supported_entity="IN_AADHAAR", 
                 patterns=[aadhaar_pattern],
@@ -66,12 +66,25 @@ class TextRedactorService:
             
             # 5. Generic API Key (10-64 chars of hex/alphanumeric)
             # Relaxed minimum length to catch shorter/numeric test keys
-            api_key_pattern = Pattern(name="api_key_pattern", regex=r"[a-zA-Z0-9-]{10,64}", score=0.6)
+            api_key_pattern = Pattern(name="api_key_pattern", regex=r"\b[a-zA-Z0-9-]{20,64}\b", score=0.6)
             api_key_recognizer = PatternRecognizer(
                 supported_entity="API_KEY", 
                 patterns=[api_key_pattern],
                 context=["api", "key", "token", "secret", "auth", "sk-"]
             )
+            
+            # 6. Uppercase Names (Common on ID cards)
+            name_pattern = Pattern(name="caps_name_pattern", regex=r"\b[A-Z]{2,}(?:\s[A-Z]{2,})+\b", score=0.85)
+            name_recognizer = PatternRecognizer(
+                supported_entity="PERSON", 
+                patterns=[name_pattern],
+                context=["name", "son of", "daughter of", "wife of", "care of", "dob"]
+            )
+            
+            # 7. Names following "name is" (Case insensitive for "name is")
+            # We match the whole phrase and let our post-processor shrink it to just the name
+            intro_name_pattern = Pattern(name="intro_name_pattern", regex=r"(?i)\bname is\s+[A-Z][a-zA-Z]+\b", score=0.85)
+            intro_name_recognizer = PatternRecognizer(supported_entity="PERSON", patterns=[intro_name_pattern])
             
             # Add all to registry
             self.analyzer.registry.add_recognizer(emp_recognizer)
@@ -79,6 +92,8 @@ class TextRedactorService:
             self.analyzer.registry.add_recognizer(pan_recognizer)
             self.analyzer.registry.add_recognizer(in_phone_recognizer)
             self.analyzer.registry.add_recognizer(api_key_recognizer)
+            self.analyzer.registry.add_recognizer(name_recognizer)
+            self.analyzer.registry.add_recognizer(intro_name_recognizer)
             # -----------------------------------
             
             # The Anonymizer Engine replaces PII (default with <entity_type>)
@@ -103,6 +118,63 @@ class TextRedactorService:
         # Step 1: Detect PII
         # We increase the overlap threshold to favor our custom recognizers
         results = self.analyzer.analyze(text=text, entities=entities, language=language)
+        
+        # Custom extraction for "name is [Name]" to guarantee detection
+        import re
+        from presidio_analyzer import RecognizerResult
+        intro_pattern = re.compile(r"(?i)\bname is\s+([A-Z][a-zA-Z]+)\b")
+        for match in intro_pattern.finditer(text):
+            name_start = match.start(1)
+            name_end = match.end(1)
+            
+            # Create a RecognizerResult
+            res = RecognizerResult(
+                entity_type="PERSON",
+                start=name_start,
+                end=name_end,
+                score=0.95 
+            )
+            results.append(res)
+        
+        # Post-process results to fix Spacy including introductory phrases in PERSON entities
+        adjusted_results = []
+        from presidio_analyzer import RecognizerResult
+        
+        IGNORE_PERSON_PHRASES = {
+            "my name is", "my aadhaar is", "my aadhar is", 
+            "and my pan is", "reach me at", "my employee id is", 
+            "and my api key is", "my pan is"
+        }
+        
+        for res in results:
+            if res.entity_type == "PERSON":
+                entity_text = text[res.start:res.end].strip()
+                entity_text_lower = entity_text.lower()
+                
+                # Rule 1: Discard if it matches common introductory phrases
+                if entity_text_lower in IGNORE_PERSON_PHRASES:
+                    continue
+                    
+                # Rule 2: Discard if it ends with " is" (implies it's a phrase like "My Aadhaar is")
+                if entity_text_lower.endswith(" is"):
+                    continue
+                    
+                # Rule 3: Shrink if it contains " is " and has text after it
+                if " is " in entity_text:
+                    pos = entity_text.rfind(" is ")
+                    new_start = res.start + pos + 4
+                    if new_start < res.end:
+                        new_res = RecognizerResult(
+                            entity_type=res.entity_type,
+                            start=new_start,
+                            end=res.end,
+                            score=res.score
+                        )
+                        adjusted_results.append(new_res)
+                        continue
+                        
+            adjusted_results.append(res)
+        results = adjusted_results
         
         # Filter overlaps: if two entities occupy the same space, pick the one with higher score
         # or favor specific Indian entities over generic ones

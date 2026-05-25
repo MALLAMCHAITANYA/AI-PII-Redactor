@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from services.text_redactor import text_redactor
 from services.image_redactor import image_redactor
-from services.audio_redactor import audio_redactor
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -20,6 +19,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-PII-Findings", "X-PII-Risk-Summary"],
 )
 
 @app.get("/")
@@ -71,40 +71,6 @@ async def redact_file_endpoint(file: UploadFile = File(...), entities: str = For
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/redact/audio")
-async def redact_audio_endpoint(file: UploadFile = File(...), entities: str = Form(None)):
-    if not file.content_type.startswith("audio/"):
-        if not file.filename.endswith(('.mp3', '.wav', '.webm', '.m4a', '.ogg')):
-            raise HTTPException(status_code=400, detail="Uploaded file is not an audio file.")
-        
-    try:
-        parsed_entities = None
-        if entities:
-            import json
-            try:
-                parsed_entities = json.loads(entities)
-            except json.JSONDecodeError:
-                pass
-                
-        contents = await file.read()
-        # redact_audio now returns a dict with audio_bytes, findings, and risk_summary
-        result = audio_redactor.redact_audio(contents, entities=parsed_entities)
-        
-        # We'll encode the audio as base64 so we can send it in JSON along with findings
-        import base64
-        encoded_audio = base64.b64encode(result["audio_bytes"]).decode("utf-8")
-        
-        return {
-            "redacted_audio_base64": f"data:audio/mpeg;base64,{encoded_audio}",
-            "findings": result["findings"],
-            "risk_summary": result["risk_summary"],
-            "text": result.get("text", "") # transcribed text
-        }
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Audio redaction failed: {str(e)}")
-
 
 @app.post("/api/redact/image")
 async def redact_image_endpoint(file: UploadFile = File(...), entities: str = Form(None)):
@@ -121,11 +87,21 @@ async def redact_image_endpoint(file: UploadFile = File(...), entities: str = Fo
             except json.JSONDecodeError:
                 pass # Fallback to None if not valid JSON
                 
-        contents = await file.read()
-        redacted_bytes = image_redactor.redact_image(contents, entities=parsed_entities)
+        # Read file bytes
+        image_bytes = await file.read()
         
-        # Return the raw image bytes back to the frontend with correct content type
-        return Response(content=redacted_bytes, media_type="image/jpeg")
+        # Call image redactor
+        result = image_redactor.redact_image(image_bytes, entities=parsed_entities)
+        
+        import json
+        from fastapi import Response
+        
+        headers = {
+            "X-PII-Findings": json.dumps(result["findings"]),
+            "X-PII-Risk-Summary": json.dumps(result["risk_summary"])
+        }
+        
+        return Response(content=result["image_bytes"], media_type="image/jpeg", headers=headers)
     except Exception as e:
         import traceback
         traceback.print_exc()
