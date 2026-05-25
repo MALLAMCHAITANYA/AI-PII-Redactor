@@ -9,6 +9,12 @@ An intelligent, secure, and modern privacy tool designed to automatically redact
 
 ---
 
+## 🌐 Live Deployments
+- 🎨 **Frontend Web App**: [https://ai-pii-redactor-1.vercel.app](https://ai-pii-redactor-1.vercel.app) *(or your Vercel project URL)*
+- ⚙️ **Backend API Server**: [https://ai-pii-redactor-1.onrender.com](https://ai-pii-redactor-1.onrender.com)
+
+---
+
 ## ✨ Features
 - 📝 **Text Redaction**: Instantly scan and sanitize raw text using Microsoft Presidio.
 - 🖼️ **Image Redaction**: Automatically detect and black out text-based PII inside images using Tesseract OCR.
