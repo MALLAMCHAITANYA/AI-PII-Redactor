@@ -5,7 +5,7 @@ import RedactedOutput from '../components/RedactedOutput'
 import RiskSummary from '../components/RiskSummary'
 import Sidebar from '../components/Sidebar'
 import TextInput from '../components/TextInput'
-import { redactAudio, redactFile, redactImage, redactText } from '../services/api'
+import { redactFile, redactImage, redactText } from '../services/api'
 
 const SAMPLE_TEXT =
   'My name is Alex. My Aadhaar is 1234 5678 9012 and my PAN is ABCDE1234F. Reach me at +91 98765 43210 or alex.demo@gmail.com. My employee ID is EMP-8821 and my API key is sk-1234567890abcdef1234567890abcdef.'
@@ -23,16 +23,8 @@ function Dashboard() {
   const [uploadFile, setUploadFile] = useState(null)
   const [inputMode, setInputMode] = useState('text')
   const [selectedEntities, setSelectedEntities] = useState([
-    'PERSON',
-    'EMAIL_ADDRESS',
-    'PHONE_NUMBER',
-    'LOCATION',
-    'US_SSN',
-    'CREDIT_CARD',
-    'EMPLOYEE_ID',
     'IN_AADHAAR',
     'IN_PAN',
-    'IN_PHONE',
     'API_KEY'
   ])
 
@@ -78,19 +70,6 @@ function Dashboard() {
       return
     }
 
-    if (inputMode === 'audio' && !uploadFile) {
-      setErrorMessage('Please upload or record an audio file before processing.')
-      toast.error('Audio file is required.')
-      return
-    }
-
-    if (inputMode === 'video') {
-      toast('Backend endpoint for this mode is not connected yet.', {
-        icon: '🧩',
-      })
-      return
-    }
-
     setIsLoading(true)
     setErrorMessage('')
 
@@ -98,8 +77,6 @@ function Dashboard() {
       let data
       if (inputMode === 'image') {
         data = await redactImage(uploadFile, selectedEntities)
-      } else if (inputMode === 'audio') {
-        data = await redactAudio(uploadFile, selectedEntities)
       } else if (inputMode === 'text-file') {
         data = await redactFile(uploadFile, selectedEntities)
       } else {
@@ -137,23 +114,6 @@ function Dashboard() {
       }
       setErrorMessage('')
       toast.success('File looks ready for redaction.')
-      return
-    }
-
-    if (inputMode === 'audio') {
-      if (!uploadFile) {
-        setErrorMessage('Please upload or record audio before validating.')
-        toast.error('Audio is required.')
-        return
-      }
-      setErrorMessage('')
-      toast.success('Audio looks ready for redaction.')
-      return
-    }
-
-    if (inputMode === 'video') {
-      setErrorMessage('Validation for this mode will be enabled when backend endpoint is available.')
-      toast('This mode is frontend-only right now.', { icon: 'ℹ️' })
       return
     }
 
@@ -224,9 +184,16 @@ function Dashboard() {
         />
 
         <div className="space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight text-slate-100">AI PII Redactor</h1>
-            
+          <header className="flex items-center gap-4">
+            <img 
+              src="/favicon.svg" 
+              alt="AI PII Redactor Logo" 
+              className="h-16 w-16 rounded-xl border border-slate-800 bg-slate-900/50 p-2 shadow-lg backdrop-blur"
+            />
+            <div>
+              <h1 className="text-4xl font-bold tracking-tight text-slate-100">AI PII Redactor</h1>
+              <p className="text-sm text-slate-400">Secure AI-powered Personally Identifiable Information redaction</p>
+            </div>
           </header>
 
           <TextInput

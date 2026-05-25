@@ -4,8 +4,6 @@ const INPUT_MODES = [
   { id: 'text', label: 'Text' },
   { id: 'image', label: 'Image' },
   { id: 'text-file', label: 'Text File' },
-  { id: 'audio', label: 'Audio' },
-  { id: 'video', label: 'Video' },
 ]
 
 function TextInput({
@@ -27,10 +25,7 @@ function TextInput({
   const [cameraError, setCameraError] = useState('')
 
   const videoRef = useRef(null)
-  const audioRef = useRef(null)
   const streamRef = useRef(null)
-  const mediaRecorderRef = useRef(null)
-  const mediaChunksRef = useRef([])
 
   const clearCapturedMediaUrl = () => {
     if (capturedMediaUrl) {
@@ -40,10 +35,6 @@ function TextInput({
   }
 
   const stopLive = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop()
-    }
-
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop())
       streamRef.current = null
@@ -53,10 +44,6 @@ function TextInput({
       videoRef.current.srcObject = null
     }
 
-    if (audioRef.current) {
-      audioRef.current.srcObject = null
-    }
-
     setLiveOn(false)
     setIsRecording(false)
   }
@@ -64,8 +51,8 @@ function TextInput({
   const startLive = async () => {
     setCameraError('')
 
-    if (inputMode === 'text' || inputMode === 'text-file') {
-      setCameraError('Live capture is available for image, audio, and video modes.')
+    if (inputMode !== 'image') {
+      setCameraError('Live capture is only available for image mode.')
       return
     }
 
@@ -82,43 +69,27 @@ function TextInput({
     try {
       const devices = await navigator.mediaDevices.enumerateDevices()
       const hasVideoInput = devices.some((device) => device.kind === 'videoinput')
-      const hasAudioInput = devices.some((device) => device.kind === 'audioinput')
 
-      if ((inputMode === 'image' || inputMode === 'video') && !hasVideoInput) {
+      if (!hasVideoInput) {
         setCameraError('No camera device was found on this system.')
-        return
-      }
-
-      if ((inputMode === 'audio' || inputMode === 'video') && !hasAudioInput) {
-        setCameraError('No microphone device was found on this system.')
         return
       }
 
       stopLive()
       clearCapturedMediaUrl()
 
-      const constraintsByMode = {
-        image: { video: { facingMode: 'environment' }, audio: false },
-        audio: { video: false, audio: true },
-        video: { video: { facingMode: 'environment' }, audio: true },
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraintsByMode[inputMode])
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
 
       streamRef.current = stream
 
-      if ((inputMode === 'image' || inputMode === 'video') && videoRef.current) {
+      if (videoRef.current) {
         videoRef.current.srcObject = stream
-      }
-
-      if (inputMode === 'audio' && audioRef.current) {
-        audioRef.current.srcObject = stream
       }
 
       setLiveOn(true)
     } catch (error) {
       if (error?.name === 'NotAllowedError') {
-        setCameraError('Permission denied. Allow camera/microphone access in browser settings and retry.')
+        setCameraError('Permission denied. Allow camera access in browser settings and retry.')
         return
       }
 
@@ -152,48 +123,18 @@ function TextInput({
 
       context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
       setCapturedImage(canvas.toDataURL('image/png'))
+      
+      // Convert canvas to blob and then to File to pass to parent
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], 'captured_live.png', { type: 'image/png' })
+          onUploadFileChange?.(file)
+        }
+      }, 'image/png')
+      
       return
     }
 
-    if (inputMode === 'audio' || inputMode === 'video') {
-      if (!window.MediaRecorder) {
-        setCameraError('Recording is not supported in this browser.')
-        return
-      }
-
-      if (isRecording) {
-        return
-      }
-
-      clearCapturedMediaUrl()
-      mediaChunksRef.current = []
-
-      const mimeType = inputMode === 'audio' ? 'audio/webm' : 'video/webm'
-      const recorder = new MediaRecorder(streamRef.current, { mimeType })
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          mediaChunksRef.current.push(event.data)
-        }
-      }
-
-      recorder.onstop = () => {
-        const blob = new Blob(mediaChunksRef.current, { type: mimeType })
-        if (blob.size > 0) {
-          const url = URL.createObjectURL(blob)
-          setCapturedMediaUrl(url)
-          
-          // CRITICAL: Pass the recorded blob to the parent Dashboard state
-          const file = new File([blob], `recorded_${inputMode}.${mimeType.split('/')[1]}`, { type: mimeType })
-          onUploadFileChange?.(file)
-        }
-        setIsRecording(false)
-      }
-
-      recorder.start()
-      mediaRecorderRef.current = recorder
-      setIsRecording(true)
-    }
   }
 
   useEffect(() => {
@@ -277,19 +218,7 @@ function TextInput({
     )
   }
 
-  const liveTitleByMode = {
-    image: 'Image (Live)',
-    audio: 'Audio (Live)',
-    video: 'Video (Live)',
-  }
-
-  const liveDescriptionByMode = {
-    image: 'Use camera to capture a live image.',
-    audio: 'Use microphone to record live audio.',
-    video: 'Use camera and microphone to record live video.',
-  }
-
-  const showLiveSection = inputMode === 'image' || inputMode === 'audio' || inputMode === 'video'
+  const showLiveSection = inputMode === 'image'
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 shadow-soft backdrop-blur">
@@ -348,8 +277,8 @@ function TextInput({
 
       {showLiveSection ? (
         <div className="mt-5 rounded-lg border border-slate-800 bg-slate-950/80 p-4">
-          <p className="text-sm font-medium text-slate-200">{liveTitleByMode[inputMode]}</p>
-          <p className="mt-1 text-xs text-slate-400">{liveDescriptionByMode[inputMode]}</p>
+          <p className="text-sm font-medium text-slate-200">Image (Live)</p>
+          <p className="mt-1 text-xs text-slate-400">Use camera to capture a live image.</p>
 
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -363,53 +292,34 @@ function TextInput({
             <button
               type="button"
               onClick={captureOrRecord}
-              disabled={!liveOn || isRecording}
+              disabled={!liveOn}
               className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-100 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {inputMode === 'image' ? 'Capture' : isRecording ? 'Recording...' : 'Record'}
+              Capture
             </button>
             <button
               type="button"
               onClick={stopLive}
-              disabled={!liveOn && !isRecording}
+              disabled={!liveOn}
               className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-100 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Stop Live
             </button>
           </div>
 
-          {inputMode === 'image' || inputMode === 'video' ? (
-            <div className="mt-3 grid gap-3 lg:grid-cols-2">
-              <div className="overflow-hidden rounded-md border border-slate-800 bg-black">
-                <video ref={videoRef} autoPlay playsInline muted className="h-44 w-full object-cover" />
-              </div>
-
-              <div className="overflow-hidden rounded-md border border-slate-800 bg-black">
-                {inputMode === 'image' ? (
-                  capturedImage ? (
-                    <img src={capturedImage} alt="Captured frame" className="h-44 w-full object-cover" />
-                  ) : (
-                    <div className="flex h-44 items-center justify-center text-xs text-slate-500">Captured image preview</div>
-                  )
-                ) : capturedMediaUrl ? (
-                  <video src={capturedMediaUrl} controls className="h-44 w-full object-cover" />
-                ) : (
-                  <div className="flex h-44 items-center justify-center text-xs text-slate-500">Recorded video preview</div>
-                )}
-              </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <div className="overflow-hidden rounded-md border border-slate-800 bg-black">
+              <video ref={videoRef} autoPlay playsInline muted className="h-44 w-full object-cover" />
             </div>
-          ) : null}
 
-          {inputMode === 'audio' ? (
-            <div className="mt-3 space-y-3 rounded-md border border-slate-800 bg-slate-900/50 p-3">
-              <audio ref={audioRef} autoPlay muted />
-              {capturedMediaUrl ? (
-                <audio src={capturedMediaUrl} controls className="w-full" />
+            <div className="overflow-hidden rounded-md border border-slate-800 bg-black">
+              {capturedImage ? (
+                <img src={capturedImage} alt="Captured frame" className="h-44 w-full object-cover" />
               ) : (
-                <p className="text-xs text-slate-500">Recorded audio preview</p>
+                <div className="flex h-44 items-center justify-center text-xs text-slate-500">Captured image preview</div>
               )}
             </div>
-          ) : null}
+          </div>
 
           {cameraError ? <p className="mt-2 text-xs text-red-300">{cameraError}</p> : null}
         </div>

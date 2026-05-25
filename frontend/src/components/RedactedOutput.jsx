@@ -27,10 +27,7 @@ function RedactedOutput({ outputText, highlightedHtml, onDownload, onCopy, outpu
             <div className="flex justify-center">
               <img src={outputText} alt="Redacted Output" className="max-h-96 rounded-md object-contain" />
             </div>
-          ) : outputMode === 'audio' && outputText ? (
-            <div className="flex justify-center py-4">
-              <audio src={outputText} controls className="w-full max-w-md" />
-            </div>
+
           ) : (
             `${outputMode.toUpperCase()} output preview will appear here after backend integration.`
           )}

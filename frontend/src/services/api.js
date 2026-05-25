@@ -39,28 +39,6 @@ export async function redactFile(file, entities = null) {
   return normalizeResponse(response.data)
 }
 
-export async function redactAudio(audioFile, entities = null) {
-  const formData = new FormData()
-  formData.append('file', audioFile)
-  if (entities) {
-    formData.append('entities', JSON.stringify(entities))
-  }
-
-  const response = await apiClient.post('/redact/audio', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  })
-
-  // Normalize response will handle findings and risk_summary correctly if we pass the whole data
-  const normalized = normalizeResponse(response.data)
-  
-  // Override redacted_text to use the base64 audio URL
-  return {
-    ...normalized,
-    redacted_text: response.data.redacted_audio_base64,
-  }
-}
 
 export async function redactImage(imageFile, entities = null) {
   const formData = new FormData()
@@ -74,8 +52,22 @@ export async function redactImage(imageFile, entities = null) {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      responseType: 'blob', // Important: we expect a raw image back
+      responseType: 'blob', // Expect a raw image back
     })
+
+    // Extract findings and risk summary from custom headers
+    const findingsHeader = response.headers['x-pii-findings']
+    const riskSummaryHeader = response.headers['x-pii-risk-summary']
+    
+    let findings = []
+    let riskSummary = { total: 0, high: 0, medium: 0, low: 0 }
+    
+    try {
+      if (findingsHeader) findings = JSON.parse(findingsHeader)
+      if (riskSummaryHeader) riskSummary = JSON.parse(riskSummaryHeader)
+    } catch (e) {
+      console.error('Failed to parse findings from headers', e)
+    }
 
     // Create a local object URL from the Blob response
     const redactedImageUrl = URL.createObjectURL(response.data)
@@ -83,20 +75,10 @@ export async function redactImage(imageFile, entities = null) {
     return {
       redacted_text: redactedImageUrl, // We will use this to display the image
       highlighted_html: '',
-      findings: [],
-      risk_summary: { total: 0, high: 0, medium: 0, low: 0 },
+      findings: findings,
+      risk_summary: riskSummary,
     }
   } catch (error) {
-    // Attempt to read the error message if the backend returned JSON instead of an image
-    if (error.response && error.response.data instanceof Blob && error.response.data.type === 'application/json') {
-      const text = await error.response.data.text()
-      try {
-        const json = JSON.parse(text)
-        error.response.data = json // re-assign so the dashboard error handler catches it
-      } catch (e) {
-        // ignore
-      }
-    }
     throw error
   }
 }
