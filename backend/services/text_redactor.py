@@ -9,38 +9,19 @@ class TextRedactorService:
     def __init__(self):
         logger.info("Initializing Microsoft Presidio Engines...")
         try:
-            # The Analyzer Engine identifies PII
-            # Try to load models in order of preference
-            models = ["en_core_web_sm", "en_core_web_md", "en_core_web_lg"]
-            success = False
-            self.analyzer = None
+            from presidio_analyzer.nlp_engine import NlpEngineProvider
             
-            # Note: We attempt to initialize AnalyzerEngine. 
-            # If it fails, it usually means the default model (lg) is missing.
-            # We then try to explicitly load what's available.
-            try:
-                self.analyzer = AnalyzerEngine(default_score_threshold=0.5)
-                success = True
-            except Exception as e:
-                logger.warning(f"Default Presidio initialization failed: {e}. Trying fallbacks...")
-                for model in models:
-                    try:
-                        import spacy
-                        if spacy.util.is_package(model):
-                            # We can pass specific nlp_engine configuration to Presidio
-                            # but for now, we'll suggest downloading the model if it fails.
-                            logger.info(f"Found model {model}, attempting to use it.")
-                            # AnalyzerEngine(default_score_threshold=0.35) should work if sm is the only one.
-                            self.analyzer = AnalyzerEngine(default_score_threshold=0.5)
-                            success = True
-                            break
-                    except Exception as model_e:
-                        logger.warning(f"Could not use {model}: {model_e}")
+            # Explicitly configure Presidio to use the small Spacy model (en_core_web_sm)
+            # to prevent runtime downloads of en_core_web_lg and save memory.
+            configuration = {
+                "nlp_engine_name": "spacy",
+                "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+            }
             
-            if not success:
-                logger.error("No spaCy models found for Presidio. PII detection may be limited.")
-                # We'll try one last time with default
-                self.analyzer = AnalyzerEngine()
+            provider = NlpEngineProvider(nlp_configuration=configuration)
+            nlp_engine = provider.create_engine()
+            
+            self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine, default_score_threshold=0.5)
             
             # --- ADD CUSTOM RECOGNIZERS HERE ---
             # 1. Employee ID in format EMP-1234
